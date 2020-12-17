@@ -18,19 +18,6 @@ d_val = 1.3; % Disturbance Fa
 u_in = 3;
 [xf,exitflag] = solveODE(sys,par,d_val,u_in);
 
-%% Configure EKF
-
-EKF = prepareEKF(sys,Ts);
-
-ny = numel(sys.y);
-nxEKF = numel(sys.x);
-xk_hat = xf;
-uEKF = u_in;
-Pk = 1e3.*eye(nxEKF);
-Qk = 1e3.*eye(nxEKF);
-Rk = 1e0.*eye(ny);
-K = 0;
-
 %% Simulation
 
 nIter = 4*3600;
@@ -61,7 +48,6 @@ for sim_k = 1:nIter
     xf = full(Fk.xf);
     
     % Gradient Estimator
-    [xk_hat,Pk] = EKF_estimation(EKF,xf,xk_hat,u_in,Pk,Qk,Rk,d_val);
     Ju_hat = Jud*pinv(Gd)*(xf-x_opt) + (Juu - Jud*pinv(Gd)*Gu)*(u_in-u_opt);
     
     sim.x(:,sim_k) = xf;

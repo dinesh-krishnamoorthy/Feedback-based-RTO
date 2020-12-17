@@ -18,6 +18,18 @@ H = WO_F(sys,par,d_val,d_val+0.1);
 u_in = 3;
 [xf,exitflag] = solveODE(sys,par,d_val,u_in);
 
+%% Configure EKF
+
+EKF = prepareEKF(sys,Ts);
+
+ny = numel(sys.y);
+nxEKF = numel(sys.x);
+xk_hat = xf;
+uEKF = u_in;
+Pk = 1e3.*eye(nxEKF);
+Qk = 1e3.*eye(nxEKF);
+Rk = 1e0.*eye(ny);
+K = 0;
 
 %% Simulation
 
@@ -48,7 +60,7 @@ for sim_k = 1:nIter
     xf = full(Fk.xf);
     
     % Gradient Estimator
-    Ju_hat = H(6,:)*vertcat((xf-x_opt),(u_in-u_opt));
+    Ju_hat = H(6,:)*vertcat((xk_hat-x_opt),(u_in-u_opt));
     
     sim.x(:,sim_k) = xf;
     sim.u(:,sim_k) = u_in;
