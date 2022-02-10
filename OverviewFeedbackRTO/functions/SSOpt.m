@@ -1,4 +1,4 @@
-function [xopt,uopt,exitflag] = SSOpt(sys,par,d_val,opts)
+function [xopt,uopt,exitflag,sol] = SSOpt(sys,par,d_val,opts)
 
 % Function that computes the steady-state optimum
 % Written by Dinesh Krishnamoorthy, Jul 2019, NTNU

@@ -7,7 +7,6 @@ nx = numel(sys.x);
 diff_EKF= [];
 
 
-
     for i = 1:nx
         diff_EKF = [diff_EKF; sys.x(i) + Ts*sys.diff(i)];
     end
@@ -23,6 +22,8 @@ diff_EKF= [];
     EKF.JacBu = Function('JacBu',{sys.x,sys.u,sys.d},{jacobian(sys.diff,sys.u)});
     EKF.JacJx = Function('JacJx',{sys.x,sys.u,sys.d},{jacobian(sys.L,sys.x)});
     EKF.JacJu = Function('JacJu',{sys.x,sys.u,sys.d},{jacobian(sys.L,sys.u)});
+    EKF.JacCx = Function('JacCx',{sys.x,sys.u,sys.d},{jacobian(sys.nlcon,sys.x)});
+    EKF.JacCu = Function('JacCu',{sys.x,sys.u,sys.d},{jacobian(sys.nlcon,sys.u)});
     
 
 

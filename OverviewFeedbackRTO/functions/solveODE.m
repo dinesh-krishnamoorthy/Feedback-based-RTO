@@ -1,3 +1,4 @@
+
 function [xf,exitflag,sol] = solveODE(sys,par,d_val,u_in,opts)
 
 % Function that computes the steady-state optimum
@@ -37,6 +38,7 @@ w0 = [w0;dx0];
 g = {g{:},vertcat(sys.diff)};
 lbg = [lbg;zeros(numel(sys.diff),1)];
 ubg = [ubg;zeros(numel(sys.diff),1)];
+
 
 nlp = struct('x',vertcat(w{:}),'p',vertcat(sys.d,sys.u),'f',0,'g',vertcat(g{:}));
 solver = nlpsol('solver','ipopt',nlp,opts);

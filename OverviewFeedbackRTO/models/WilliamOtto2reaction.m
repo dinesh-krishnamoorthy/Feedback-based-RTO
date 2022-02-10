@@ -48,6 +48,7 @@ sys.diff = vertcat(dxa,dxb,dxp,dxe,dxg,dTr);
 sys.x = vertcat(xa,xb,xp,xe,xg,Tr);
 sys.d = vertcat(Fa);
 sys.u = vertcat(Fb);
+sys.y = sys.x;
 
 sys.L = -(1043.38*xp*(Fa+Fb)+20.92*xe*(Fa+Fb) - 79.23*Fa - 118.34*Fb);
 

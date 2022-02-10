@@ -1,0 +1,156 @@
+clc
+clear
+import casadi.*
+
+FileName = mfilename('fullpath');
+[directory,~,~] = fileparts(FileName);
+[parent,~,~] = fileparts(directory);
+addpath([directory '/data'])
+addpath([directory '/models'])
+addpath([directory '/functions'])
+
+Ts = 1; % Sample time
+
+% Load William-Otto reactor model
+[sys,par,F] = WilliamOtto6state(Ts);
+d_val = 1.4; % Disturbance Fa
+
+
+[xopt,uopt,exitflag,sol] = SSOpt(sys,par,d_val);
+
+% Initialize WO reactor
+u_in = [3;347.0760];
+[xf,exitflag] = solveODE(sys,par,d_val,u_in);
+
+
+%% Configure EKF
+
+EKF = prepareEKF(sys,Ts);
+
+ny = numel(sys.y);
+nxEKF = numel(sys.x);
+xk_hat = xf;
+uEKF = u_in;
+Pk = 1e3.*eye(nxEKF);
+Qk = 1e3.*eye(nxEKF);
+Rk = 1e0.*eye(ny);
+K = 0;
+
+%% Simulation
+
+nIter = 9*3600;
+h = waitbar(0,'Simulation in Progress...');
+
+Ju_hat = [0,0];
+Cu_hat = [0,0;0,0];
+
+GC.u = u_in;
+GC.u0 = u_in;
+GC.err = 0;
+GC.err0 = 0;
+GC.uf = GC.u;
+
+DC1.u = 0;
+DC1.K = 20;
+
+DC2.u = 720;
+DC2.K = 50;
+
+mu = 50;
+for sim_k = 1:nIter
+    waitbar(sim_k /nIter)
+    
+    % Dual Controller
+    DC1.u = max(0,DC1.u + DC1.K*(xf(1)-0.12));
+    DC2.u = max(0,DC2.u + 3*DC2.K*(xf(6)-0.08));
+    
+    lam = [DC1.u;DC2.u];
+    
+    C = [max(0,xf(1)-0.12),max(0,xf(6)-0.08)];
+    
+    % Primal Controller
+    GC.Kp = [0.001251;0.001251];
+    GC.Ki = [1.564*1e-2;1.564*1e-2];
+    
+    GC.err = (0 - (Ju_hat + lam'*Cu_hat + 0000*C*Cu_hat))';
+% GC.err = (0 - (Ju_hat + mu.*pinv(C)*Cu_hat))';
+    GC.u = GC.u + GC.Kp.*GC.err + GC.Ki.*GC.err - GC.Kp.*GC.err0;
+    GC.uf = GC.u;
+    GC.err0 = GC.err;
+    
+    
+    
+     if sim_k>3*3600
+        d_val = 1.9;
+     end
+     if sim_k>6*3600
+        d_val = 1.5;
+     end
+     
+     
+    % Plant simulator
+    par.ubu(1) = 4;
+    u_in = max(par.lbu,min(par.ubu,GC.u));
+    
+    
+    Fk = F('x0',xf,'p',vertcat(d_val,u_in));
+    xf = full(Fk.xf);
+    
+    % Gradient Estimator
+    [xk_hat,Pk] = EKF_estimation(EKF,xf,xk_hat,u_in,Pk,Qk,Rk,d_val);
+    Ju_hat = EstJu(EKF,xk_hat,u_in,d_val);
+    Cu_hat = EstCu(EKF,xk_hat,u_in,d_val);
+    
+    sim.x(:,sim_k) = xf;
+    sim.u(:,sim_k) = u_in;
+    sim.Ju(:,sim_k) = Ju_hat;
+    sim.lam(:,sim_k) = lam;
+%     sim.c(sim_k) = Ju_hat;
+    
+end
+close(h)
+%%
+
+figure(12)
+hold all
+subplot(221)
+hold all
+plot((sim.x(6,:)))
+ylabel('x_G')
+grid on
+subplot(222)
+hold all
+plot((sim.x(1,:)))
+ylabel('x_A')
+grid on
+subplot(224)
+hold all
+plot((sim.u(1,:)))
+ylabel('F_B')
+grid on
+subplot(223)
+hold all
+plot((sim.u(2,:)))
+ylabel('T_r')
+grid on
+
+
+function Ju_hat = EstJu(EKF,x_hat,uEKF,d_hat)
+
+A = full(EKF.JacAx(x_hat,uEKF,d_hat));
+B = full(EKF.JacBu(x_hat,uEKF,d_hat));
+C = full(EKF.JacJx(x_hat,uEKF,d_hat));
+D = full(EKF.JacJu(x_hat,uEKF,d_hat));
+Ju_hat = -C*(A\B) + D;
+
+end
+
+function Cu_hat = EstCu(EKF,x_hat,uEKF,d_hat)
+
+A = full(EKF.JacAx(x_hat,uEKF,d_hat));
+B = full(EKF.JacBu(x_hat,uEKF,d_hat));
+C = full(EKF.JacCx(x_hat,uEKF,d_hat));
+D = full(EKF.JacCu(x_hat,uEKF,d_hat));
+Cu_hat = -C*(A\B) + D;
+
+end

@@ -1,0 +1,132 @@
+clc
+clear
+import casadi.*
+
+Ts = 1; % Sample time
+
+% Load William-Otto reactor model
+[sys,par,F] = WilliamOtto(Ts);
+d_val = 1.4; % Disturbance Fa
+
+% Initialize WO reactor
+u_in = 3;
+[xf,exitflag] = solveODE(sys,par,d_val,u_in);
+
+%% Configure EKF
+
+EKF = prepareEKF(sys,Ts);
+
+ny = numel(sys.y);
+nxEKF = numel(sys.x);
+xk_hat = xf;
+uEKF = u_in;
+Pk = 1e3.*eye(nxEKF);
+Qk = 1e3.*eye(nxEKF);
+Rk = 1e0.*eye(ny);
+K = 0;
+
+%% Simulation
+
+nIter = 9*3600;
+h = waitbar(0,'Simulation in Progress...');
+
+Ju_hat = 0;
+GC.u = u_in(1);
+GC.u0 = u_in(1);
+GC.err = 0;
+GC.err0 = 0;
+GC.uf = GC.u;
+
+CC.u = u_in(1);
+CC.u0 = u_in(1);
+CC.err = 0;
+CC.err0 = 0;
+CC.uf = CC.u;
+xf(7) = 348;
+for sim_k = 1:nIter
+    waitbar(sim_k /nIter)
+    
+    CC.u = u_in;
+    
+    % Gradient Controller
+    GC.tauC = 200;
+    GC.Kp = 0.1251;
+    GC.Ki = 1.564*1e-4;
+    
+    GC.u = u_in;
+    GC.err = (0 - Ju_hat);
+    GC.u = GC.u + GC.Kp*GC.err + GC.Ki*GC.err - GC.Kp*GC.err0;
+    GC.uf = GC.u;
+    GC.err0 = GC.err;
+    
+    CC.tauC = 150;
+    CC.Kp = -600/(0.0604*(CC.tauC)); %3.996 % theta = 300?
+    CC.Ki =  CC.Kp/(max(600,4*CC.tauC));
+    
+    CC.u = u_in;
+    CC.err = (0.12 - xf(1));
+    CC.u = CC.u + CC.Kp*CC.err + CC.Ki*CC.err - CC.Kp*CC.err0;
+    CC.uf = CC.u;
+    CC.err0 = CC.err;
+    
+     if sim_k>3*3600
+        d_val = 1.9;
+     end
+     if sim_k>6*3600
+        d_val = 1.5;
+     end
+    % Plant simulator
+    u_in = max(CC.uf,GC.uf);
+   
+    u_in = min(4,u_in);
+    Fk = F('x0',xf,'p',vertcat(d_val,u_in));
+    xf = full(Fk.xf);
+    
+    % Gradient Estimator
+    [xk_hat,Pk] = EKF_estimation(EKF,xf,xk_hat,u_in,Pk,Qk,Rk,d_val);
+    Ju_hat = EstJu(EKF,xk_hat,u_in,d_val);
+    
+    sim.x(:,sim_k) = xf;
+    sim.u(:,sim_k) = u_in;
+    sim.Ju(:,sim_k) = Ju_hat;
+    sim.c(sim_k) = Ju_hat;
+    
+end
+
+close(h)
+%%
+
+figure(12)
+hold all
+subplot(221)
+hold all
+plot((sim.x(6,:)))
+ylabel('x_G')
+grid on
+subplot(222)
+hold all
+% plot(sim.Ju)
+plot(sim.c)
+ylabel('J_u')
+grid on
+subplot(224)
+hold all
+plot((sim.u(1,:)))
+ylabel('F_B')
+grid on
+subplot(223)
+hold all
+plot((sim.x(7,:)))
+ylabel('T_r')
+grid on
+
+
+function Ju_hat = EstJu(EKF,x_hat,uEKF,d_hat)
+
+A = full(EKF.JacAx(x_hat,uEKF,d_hat));
+B = full(EKF.JacBu(x_hat,uEKF,d_hat));
+C = full(EKF.JacJx(x_hat,uEKF,d_hat));
+D = full(EKF.JacJu(x_hat,uEKF,d_hat));
+Ju_hat = -C*(A\B) + D;
+
+end
